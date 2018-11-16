@@ -16,13 +16,18 @@
 #include <io.h>
 #endif
 
-#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
-int do_work(mpg123_handle *m);
+#include <stdio.h>
+#include <stdlib.h>
+
+int do_work(mpg123_handle *m, int fdin, int fdout);
 
 int main(int argc, char **argv)
 {
-	int ret = 0;
+	int ret = 0, fdin = 0, fdout = 0;
 	mpg123_handle *m;
 
 	mpg123_init();
@@ -34,34 +39,46 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		fprintf(stderr, "I'll take your dirty MPEG audio from standard input and will write the extracted pure MPEG data to standard output.\n");
-		if(argc > 1 && strcmp(argv[1], "--noinfo") == 0)
+		if (3 != argc) 
 		{
-			fprintf(stderr, "Enabling parsing/consuming of the Info frame so that it will not appear in output.\n");
-			ret = mpg123_param(m, MPG123_REMOVE_FLAGS, MPG123_IGNORE_INFOFRAME, 0.);
+			printf("Usage: %s <input file> <output file\n", argv[0]);
+			exit(-1);
 		}
-		else
+
+		if (-1 == (fdin=open(argv[1], O_RDONLY)))
 		{
-			fprintf(stderr, "If you'd have given --noinfo as argument, I would omit a LAME/Xing info frame.\n");
-			ret = mpg123_param(m, MPG123_ADD_FLAGS, MPG123_IGNORE_INFOFRAME, 0.);
+			perror("open in file error");
+			exit(-1);
 		}
-		if(ret == 0) ret = do_work(m);
+		if (-1 == (fdout=open(argv[2], O_WRONLY | O_CREAT, 0644)))
+		{
+			perror("open out file error");
+			exit(-1);
+		}
+
+		fprintf(stderr, "I'll take your dirty MPEG audio from the input file and will write the extracted pure MPEG data to the output file.\n");
+		
+		ret = mpg123_param(m, MPG123_REMOVE_FLAGS, MPG123_IGNORE_INFOFRAME, 0.);
+				
+		if(ret == 0) ret = do_work(m, fdin, fdout);
 
 		if(ret != 0) fprintf(stderr, "Some error occured: %s\n", mpg123_strerror(m));
 
-
+		close(fdin);
+		close(fdout);
 		mpg123_delete(m); /* Closes, too. */
 	}
 	mpg123_exit();
 
+
 	return ret;
 }
 
-int do_work(mpg123_handle *m)
+int do_work(mpg123_handle *m, int fdin, int fdout)
 {
 	int ret;
 	size_t count = 0;
-	ret = mpg123_open_fd(m, STDIN_FILENO);
+	ret = mpg123_open_fd(m, fdin);
 	if(ret != MPG123_OK) return ret;
 
 	while( (ret = mpg123_framebyframe_next(m)) == MPG123_OK || ret == MPG123_NEW_FORMAT )
@@ -77,8 +94,8 @@ int do_work(mpg123_handle *m)
 			for(i=0; i<4; ++i) hbuf[i] = (unsigned char) ((header >> ((3-i)*8)) & 0xff);
 
 			/* Now write out both header and data, fire and forget. */
-			write(STDOUT_FILENO, hbuf, 4);
-			write(STDOUT_FILENO, bodydata, bodybytes);
+			write(fdout, hbuf, 4);
+			write(fdout, bodydata, bodybytes);
 			fprintf(stderr, "%zu: header 0x%08x, %zu body bytes\n", ++count, header, bodybytes);
 		}
 	}
