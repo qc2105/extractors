@@ -1,5 +1,6 @@
 targets = \
-  extract_mpeg_frames
+  extract_mpeg_frames \
+	bytes_of_file
 
 all: $(targets)
 
@@ -12,6 +13,9 @@ linkflags = $(MPG123_LDFLAGS) $(LDFLAGS)
 
 extract_mpeg_frames: extract_mpeg_frames.c
 	$(compile) -o $@ $< $(linkflags)
+
+bytes_of_file: bytes_of_file.c
+	gcc -Wall -o $@ $< $(CFLAGS)
 
 clean:
 	rm -vf $(targets)
